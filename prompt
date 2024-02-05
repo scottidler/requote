@@ -1,0 +1,53 @@
+requote will change the quotes from double->single [by default] or single->double if the -R|--reverse flag is passed.
+
+The exception is that it won't change non-triple quotes (single or double) if the interior of the string contains the opposite quotes.
+
+will change:
+
+ex1
+
+"Hello, World!" -> 'Hello, World!'
+
+'Hello, World!' -> "Hello, World!"
+
+ex2
+
+"""              '''
+Hello, World! -> Hello, World!
+"""              '''
+
+'''              """
+Hello, World! -> Hello, World!
+'''              """
+
+ex3
+
+"""               '''
+it's my World! -> it's my World!
+"""               '''
+
+'''               """
+it's my World! -> it's my World!
+'''               """
+
+ex4
+
+"""                    '''
+my name is 'Scott!' -> my name is 'Scott'!
+"""                    '''
+
+'''                    """
+my name is 'Scott!' -> my name is 'Scott'!
+'''                    """
+
+
+won't change:
+
+ex1
+"my name is 'Scott'!"
+
+'my name is "Scott"!'
+
+ex2
+
+"Scott's my name"

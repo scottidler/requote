@@ -1,5 +1,6 @@
 use chumsky::prelude::*;
 use chumsky::Parser;
+use chumsky::error::Simple;
 use clap::Parser as ClapParser;
 use eyre::Result;
 use std::fs;
@@ -49,6 +50,164 @@ fn process_file(path: &Path, reverse: bool) -> Result<()> {
     Ok(())
 }
 
+
+fn process_content(content: &str, reverse: bool) -> String {
+    // Parser for content inside quotes
+    let content_inside_quotes = filter(|&c: &char| c != '\'' && c != '\"')
+        .repeated()
+        .collect::<String>();
+
+    // Triple quotes parser
+    let triple_quote_parser = |quote: char, opposite_quote: char| {
+        just::<_, [char; 3], Simple<char>>([quote, quote, quote])
+            .ignore_then(
+                filter(move |&c| c != opposite_quote)
+                    .repeated()
+                    .collect::<String>()
+            )
+            .then_ignore(just::<_, [char; 3], Simple<char>>([quote, quote, quote]))
+            .map(move |content: String| format!("{0}{1}{0}", if reverse { opposite_quote } else { quote }, content))
+    };
+
+    // Single and double quotes parser with content check
+    let quote_parser = |quote: char, opposite_quote: char| {
+        just::<_, char, Simple<char>>(quote)
+            .ignore_then(content_inside_quotes.clone())
+            .then_ignore(just::<_, char, Simple<char>>(quote))
+            .map(move |content: String| {
+                if content.contains(opposite_quote) {
+                    format!("{0}{1}{0}", quote, content)
+                } else {
+                    format!("{0}{1}{0}", if reverse { quote } else { opposite_quote }, content)
+                }
+            })
+    };
+
+    let parser = choice((
+        triple_quote_parser('\'', '\"'),
+        triple_quote_parser('\"', '\''),
+        quote_parser('\'', '\"'),
+        quote_parser('\"', '\''),
+        any().map(|c: char| c.to_string()),
+    ))
+    .repeated()
+    .collect::<String>();
+
+    parser.parse(content.chars().collect::<Vec<_>>())
+          .unwrap_or_else(|e| {
+              eprintln!("Error parsing content: {:?}", e);
+              content.to_owned()
+          })
+}
+
+/*
+fn process_content(content: &str, reverse: bool) -> String {
+    // Correctly specify type annotations for just calls with Simple<char> as the error type
+    let single_quote = just::<_, _, Simple<char>>('\'');
+    let double_quote = just::<_, _, Simple<char>>('\"');
+
+    let content_inside_quotes = filter(|&c: &char| c != '\'' && c != '\"')
+        .repeated()
+        .collect::<String>();
+
+    // Triple quotes parser
+    let triple_quote_parser = |quote: char, opposite_quote: char| {
+        just::<_, _, Simple<char>>([quote, quote, quote])
+            .ignore_then(
+                filter(move |&c| c != opposite_quote)
+                    .repeated()
+                    .collect::<String>()
+            )
+            .then_ignore(just::<_, _, Simple<char>>([quote, quote, quote]))
+            .map(move |content: String| format!("{0}{1}{0}", if reverse { opposite_quote } else { quote }, content))
+    };
+
+    // Single and double quotes parser with content check
+    let quote_parser = |quote: char, opposite_quote: char| {
+        just::<_, _, Simple<char>>(quote)
+            .ignore_then(content_inside_quotes.clone())
+            .then_ignore(just::<_, _, Simple<char>>(quote))
+            .map(move |content: String| {
+                if content.contains(opposite_quote) {
+                    format!("{quote}{content}{quote}", quote = quote, content = content)
+                } else {
+                    format!("{opposite_quote}{content}{opposite_quote}", opposite_quote = opposite_quote, content = content)
+                }
+            })
+    };
+
+    let parser = choice((
+        triple_quote_parser('\'', '\"'),
+        triple_quote_parser('\"', '\''),
+        quote_parser('\'', '\"'),
+        quote_parser('\"', '\''),
+        any().map(|c: char| c.to_string()),
+    ))
+    .repeated()
+    .collect::<String>();
+
+    parser.parse(content.chars().collect::<Vec<_>>())
+          .unwrap_or_else(|e| {
+              eprintln!("Error parsing content: {:?}", e);
+              content.to_owned()
+          })
+}
+
+fn process_content(content: &str, reverse: bool) -> String {
+    // Define basic parsers for single and double quotes
+    let single_quote = just('\'');
+    let double_quote = just('\"');
+
+    // Parser for content inside quotes (excluding the quotes themselves)
+    let content_inside_quotes = filter(|&c: &char| c != '\'' && c != '\"')
+        .repeated()
+        .collect::<String>();
+
+    // Parser for triple-quoted strings
+    let triple_quote_parser = |quote: char, opposite_quote: char| {
+        just([quote, quote, quote])
+            .ignore_then(
+                filter(move |&c| c != opposite_quote)
+                    .repeated()
+                    .collect::<String>()
+            )
+            .then_ignore(just([quote, quote, quote]))
+            .map(move |content: String| format!("{0}{1}{0}", if reverse { opposite_quote } else { quote }, content))
+    };
+
+    // Single and double quotes parser with content check
+    let quote_parser = |quote: char, opposite_quote: char| {
+        just(quote)
+            .ignore_then(content_inside_quotes.clone())
+            .then_ignore(just(quote))
+            .map(move |content: String| {
+                if content.contains(opposite_quote) {
+                    format!("{quote}{content}{quote}")
+                } else {
+                    format!("{opposite_quote}{content}{opposite_quote}", quote = quote, opposite_quote = opposite_quote, content = content)
+                }
+            })
+    };
+
+    // Combine parsers to handle all cases
+    let parser = choice((
+        triple_quote_parser('\'', '\"'),
+        triple_quote_parser('\"', '\''),
+        quote_parser('\'', '\"'),
+        quote_parser('\"', '\''),
+        any().map(|c: char| c.to_string()),
+    ))
+    .repeated()
+    .collect::<String>();
+
+    // Parse the content
+    parser.parse(content.chars().collect::<Vec<_>>())
+          .unwrap_or_else(|e| {
+              eprintln!("Error parsing content: {:?}", e);
+              content.to_owned()
+          })
+}
+
 fn process_content(content: &str, reverse: bool) -> String {
     // Parsers for triple quotes
     let triple_single_quote = just::<char, _, Simple<char>>("'''").to(String::new());
@@ -96,3 +255,4 @@ fn process_content(content: &str, reverse: bool) -> String {
               content.to_owned()
           })
 }
+*/

@@ -1,21 +1,28 @@
-use std::{fs, path::Path};
-use clap::Parser;
+use chumsky::prelude::*;
+use chumsky::Parser;
+use clap::Parser as ClapParser;
 use eyre::Result;
-use regex::Regex;
-use regex::Captures;
+use std::fs;
+use std::path::Path;
 
-
-#[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[derive(ClapParser, Debug)]
+#[clap(author, version, about)]
 struct Args {
     #[clap(value_parser)]
     path: String,
 
-    #[clap(short, long, action)]
+    #[clap(short, long)]
     recursive: bool,
 
     #[clap(short = 'R', long)]
     reverse: bool,
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+    let path = Path::new(&args.path);
+    process_path(path, args.recursive, args.reverse)?;
+    Ok(())
 }
 
 fn process_path(path: &Path, recursive: bool, reverse: bool) -> Result<()> {
@@ -25,7 +32,7 @@ fn process_path(path: &Path, recursive: bool, reverse: bool) -> Result<()> {
             let path = entry.path();
             if path.is_dir() {
                 process_path(&path, recursive, reverse)?;
-            } else {
+            } else if path.is_file() {
                 process_file(&path, reverse)?;
             }
         }
@@ -43,37 +50,49 @@ fn process_file(path: &Path, reverse: bool) -> Result<()> {
 }
 
 fn process_content(content: &str, reverse: bool) -> String {
-    let triple_single_regex = Regex::new(r"'''[\s\S]*?'''").unwrap();
-    let triple_double_regex = Regex::new(r#""""[\s\S]*?""""#).unwrap();
-    let single_quote_regex = Regex::new(r"'([^']*)'").unwrap();
-    let double_quote_regex = Regex::new(r#""([^"]*)""#).unwrap();
+    // Parsers for triple quotes
+    let triple_single_quote = just::<char, _, Simple<char>>("'''").to(String::new());
+    let triple_double_quote = just::<char, _, Simple<char>>("\"\"\"").to(String::new());
 
-    let mut processed_content = content.to_string();
+    // Define parser for single and double quoted strings, checking content inside
+    let single_quote = just('\'');
+    let double_quote = just('\"');
+    let content_inside_quotes = filter(|&c: &char| c != '\'' && c != '\"')
+        .repeated()
+        .collect::<String>()
+        .then_ignore(end());
 
-    if reverse {
-        processed_content = triple_single_regex.replace_all(&processed_content, |caps: &Captures| {
-            format!("\"\"\"{}\"\"\"", &caps[0][3..caps[0].len()-3])
-        }).to_string();
+    // Enhanced parser for quoted strings to handle single-line and multi-line quotes
+    let quoted_string = choice((
+        triple_single_quote.map(|_| "\"\"\"".to_string()),
+        triple_double_quote.map(|_| "'''".to_string()),
+        single_quote.clone()
+            .ignore_then(content_inside_quotes.clone())
+            .then_ignore(single_quote)
+            .map(|content| if reverse { format!("\"{}\"", content) } else { format!("'{}'", content) }),
+        double_quote.clone()
+            .ignore_then(content_inside_quotes.clone())
+            .then_ignore(double_quote)
+            .map(|content| {
+                // Check if the content contains quotes that would conflict with the conversion
+                if reverse && !content.contains('\'') {
+                    format!("'{}'", content)
+                } else {
+                    // Default behavior for double-quoted strings without reverse logic
+                    format!("\"{}\"", content)
+                }
+            }),
+    ));
 
-        processed_content = single_quote_regex.replace_all(&processed_content, |caps: &Captures| {
-            format!("\"{}\"", &caps[1])
-        }).to_string();
-    } else {
-        processed_content = triple_double_regex.replace_all(&processed_content, |caps: &Captures| {
-            format!("'''{}'''", &caps[0][3..caps[0].len()-3])
-        }).to_string();
+    // Parser for the whole content
+    let parser = quoted_string
+        .or(any().map(|c: char| c.to_string()))
+        .repeated()
+        .collect::<String>();
 
-        processed_content = double_quote_regex.replace_all(&processed_content, |caps: &Captures| {
-            format!("'{}'", &caps[1])
-        }).to_string();
-    }
-
-    processed_content
-}
-
-fn main() -> Result<()> {
-    let args = Args::parse();
-    let path = Path::new(&args.path);
-    process_path(path, args.recursive, args.reverse)?;
-    Ok(())
+    parser.parse(content.chars().collect::<Vec<_>>())
+          .unwrap_or_else(|e| {
+              eprintln!("Error parsing content: {:?}", e);
+              content.to_owned()
+          })
 }

@@ -14,6 +14,9 @@ Cargo.lock
 *.pdb
 
 
+# ignore .new files made by requote
+*.new
+
 # Added by cargo
 
 /target

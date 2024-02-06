@@ -65,7 +65,7 @@ fn process_file(path: &Path, reverse: bool, overwrite: bool) -> Result<()> {
     Ok(())
 }
 
-fn process_content(content: &str, reverse: bool) -> String {
+fn process_content(content: &str, _reverse: bool) -> String {
     // no op for now
     let quotes = find_quotes(content);
     for quote in quotes {

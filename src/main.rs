@@ -22,6 +22,14 @@ struct Args {
     overwrite: bool,
 }
 
+#[derive(Debug)]
+enum Quote {
+    Single(String),
+    Double(String),
+    Single3(String),
+    Double3(String),
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
     let path = Path::new(&args.path);
@@ -58,52 +66,43 @@ fn process_file(path: &Path, reverse: bool, overwrite: bool) -> Result<()> {
 }
 
 fn process_content(content: &str, reverse: bool) -> String {
-    // Define parsers for content inside quotes excluding the quotes themselves
-    let content_inside_quotes = filter(|&c: &char| true) // Accept all characters
-        .repeated()
-        .collect::<String>();
+    // no op for now
+    let quotes = find_quotes(content);
+    for quote in quotes {
+        println!("{:?}", quote);
+    }
+    content.to_string()
+}
 
-    // Define parsers for triple quotes
-    let triple_quote_parser = |quote: char, opposite_quote: char| {
-        just::<_, [char; 3], Simple<char>>([quote, quote, quote])
-            .ignore_then(
-                filter(move |&c| true) // Accept all characters for triple-quoted content
-                    .repeated()
-                    .collect::<String>()
-            )
-            .then_ignore(just::<_, [char; 3], Simple<char>>([quote, quote, quote]))
-            .map(move |content: String| format!("{0}{1}{0}", if reverse { opposite_quote } else { quote }, content))
-    };
+fn find_quotes(content: &str) -> Vec<Quote> {
+    let single_quote = just::<_, _, Simple<char>>('\'')
+        .ignore_then(take_until(just('\'')).map(|(chars, _): (Vec<char>, _)| chars.into_iter().collect::<String>()))
+        .then_ignore(just('\''))
+        .map(Quote::Single);
 
-    // Define a parser for single and double quotes considering the content
-    let quote_parser = |quote: char, opposite_quote: char| {
-        just::<_, char, Simple<char>>(quote)
-            .ignore_then(content_inside_quotes.clone())
-            .then_ignore(just::<_, char, Simple<char>>(quote))
-            .map(move |content: String| {
-                // Check if the content contains the opposite quote
-                if content.contains(opposite_quote) {
-                    format!("{0}{1}{0}", quote, content) // Do not change if contains opposite quote
-                } else {
-                    format!("{0}{1}{0}", if reverse { opposite_quote } else { quote }, content) // Convert otherwise
-                }
-            })
-    };
+    let double_quote = just::<_, _, Simple<char>>('\"')
+        .ignore_then(take_until(just('\"')).map(|(chars, _): (Vec<char>, _)| chars.into_iter().collect::<String>()))
+        .then_ignore(just('\"'))
+        .map(Quote::Double);
 
-    // Combine parsers
-    let parser = choice((
-        triple_quote_parser('\'', '\"'),
-        triple_quote_parser('\"', '\''),
-        quote_parser('\'', '\"'),
-        quote_parser('\"', '\''),
-        any().map(|c: char| c.to_string()),
-    ))
-    .repeated()
-    .collect::<String>();
+    let triple_single_quote = just::<_, _, Simple<char>>("'''")
+        .ignore_then(take_until(just("'''")).map(|(chars, _): (Vec<char>, &'static str)| chars.into_iter().collect::<String>()))
+        .then_ignore(just("'''"))
+        .map(Quote::Single3);
 
-    parser.parse(content.chars().collect::<Vec<_>>())
-          .unwrap_or_else(|e| {
-              eprintln!("Error parsing content: {:?}", e);
-              content.to_owned()
-          })
+    let triple_double_quote = just::<_, _, Simple<char>>("\"\"\"")
+        .ignore_then(take_until(just("\"\"\"")).map(|(chars, _): (Vec<char>, &'static str)| chars.into_iter().collect::<String>()))
+        .then_ignore(just("\"\"\""))
+        .map(Quote::Double3);
+
+    let parser = single_quote
+        .or(double_quote)
+        .or(triple_single_quote)
+        .or(triple_double_quote)
+        .repeated();
+
+    parser.parse(content).unwrap_or_else(|errors| {
+        errors.into_iter().for_each(|e| eprintln!("Error: {:?}", e));
+        Vec::new()
+    })
 }

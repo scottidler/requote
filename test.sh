@@ -10,7 +10,7 @@ if [ $# -eq 0 ]; then
 fi
 
 FILE="$1"
+shift 1
 bat -p "$FILE"
-target/debug/requote "$FILE"
+target/debug/requote "$@" "$FILE"
 bat -p "$FILE"
-cp "$FILE.sav" "$FILE"

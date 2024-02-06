@@ -1,5 +1,18 @@
-requote will change the quotes from double->single [by default] or single->double if the -R|--reverse flag is passed.
+❯ cargo run -q -- --help
+Usage: requote [OPTIONS] <PATH>
 
+Arguments:
+  <PATH>  path to file or directory
+
+Options:
+  -r, --recursive    process directories recursively
+  -m, --mode <MODE>  requote [default: double->single] OR single->double [default: double] [possible values: single, double]
+  -o, --overwrite    override cases where requote would normally not make the change
+  -h, --help         Print help
+  -V, --version      Print version
+
+
+requote will change the quotes from [default: double->single] OR single->double depending on the -m|--mode argument.
 The exception is that it won't change non-triple quotes (single or double) if the interior of the string contains the opposite quotes.
 
 will change:

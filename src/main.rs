@@ -19,16 +19,16 @@ enum Mode {
 #[derive(ClapParser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(value_parser)]
+    #[clap(value_parser, help = "path to file or directory")]
     path: String,
 
-    #[clap(short, long)]
+    #[clap(short, long, help = "process directories recursively")]
     recursive: bool,
 
-    #[clap(short = 'm', long, default_value_t = Mode::Single, value_enum)]
+    #[clap(short, long, default_value_t = Mode::Double, value_enum, help = "requote [default: double->single] OR single->double")]
     mode: Mode,
 
-    #[clap(short, long, default_value_t = false)]
+    #[clap(short, long, default_value_t = false, help = "override cases where requote would normally not make the change")]
     overwrite: bool,
 }
 

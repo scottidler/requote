@@ -13,4 +13,4 @@ FILE="$1"
 shift 1
 bat -p "$FILE"
 target/debug/requote "$@" "$FILE"
-bat -p "$FILE"
+bat -p "$FILE.new"

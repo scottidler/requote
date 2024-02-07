@@ -25,7 +25,7 @@ struct Args {
     #[clap(short, long, help = "process directories recursively")]
     recursive: bool,
 
-    #[clap(short, long, default_value_t = Mode::Double, value_enum, help = "requote [default: double->single] OR single->double")]
+    #[clap(short, long, default_value_t = Mode::Single, value_enum, help = "requote [default: double->single] OR single->double")]
     mode: Mode,
 
     #[clap(short, long, default_value_t = false, help = "override cases where requote would normally not make the change")]
@@ -61,7 +61,7 @@ fn process_path(path: &Path, recursive: bool, mode: &Mode, overwrite: bool) -> R
 fn process_file(path: &Path, mode: &Mode, overwrite: bool) -> Result<()> {
     debug!("Processing file: {:?}", path);
     let content = fs::read_to_string(path)?;
-    let processed_content = process_content(&content, mode);
+    let processed_content = process_content(&content, mode)?;
     if overwrite {
         debug!("Overwriting original file");
         fs::write(path, processed_content)?;
@@ -73,8 +73,56 @@ fn process_file(path: &Path, mode: &Mode, overwrite: bool) -> Result<()> {
     Ok(())
 }
 
-fn process_content(content: &str, mode: &Mode) -> String {
+fn regular_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<char>>> {
+    let escape = just::<_, _, Simple<char>>('\\').then(any()).map(|(_, c)| c);
+    let non_quote_char_single = none_of::<_, _, Simple<char>>(vec!['\'', '\n']);
+    let non_quote_char_double = none_of::<_, _, Simple<char>>(vec!['\"', '\n']);
+
+    match mode {
+        Mode::Single => Box::new(
+            just('\"')
+                .ignore_then(escape.clone().or(non_quote_char_double).repeated().collect())
+                .then_ignore(just('\"'))
+                .map(|chars: String| format!("'{}'", chars))
+        ),
+        Mode::Double => Box::new(
+            just('\'')
+                .ignore_then(escape.clone().or(non_quote_char_single).repeated().collect())
+                .then_ignore(just('\''))
+                .map(|chars: String| format!("\"{}\"", chars))
+        ),
+    }
+}
+
+fn triple_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<char>>> {
+    let triple_single_content = just("'''").ignore_then(none_of('\'').repeated()).then_ignore(just("'''"));
+    let triple_double_content = just("\"\"\"").ignore_then(none_of('\"').repeated()).then_ignore(just("\"\"\""));
+
+    match mode {
+        Mode::Single => Box::new(
+            triple_double_content
+                .map(|chars| chars.into_iter().collect::<String>())
+                .map(|content| format!("'''{}'''", content.replace("\\\"", "\"")))
+        ),
+        Mode::Double => Box::new(
+            triple_single_content
+                .map(|chars| chars.into_iter().collect::<String>())
+                .map(|content| format!("\"\"\"{}\"\"\"", content.replace("\\'", "'")))
+        ),
+    }
+}
+
+fn process_content(content: &str, mode: &Mode) -> Result<String> {
     debug!("Processing content with mode: {:?}", mode);
-    content.to_string()
+    let regular_quote_parser = regular_quote(mode);
+    let triple_quote_parser = triple_quote(mode);
+    let parser = triple_quote_parser
+        .or(regular_quote_parser)
+        .or(any().map(|c: char| c.to_string()))
+        .repeated()
+        .then_ignore(end())
+        .map(|parts: Vec<String>| parts.concat());
+    parser.parse(content)
+        .map_err(|e| eyre::eyre!("Parse error: {:?}", e))
 }
 

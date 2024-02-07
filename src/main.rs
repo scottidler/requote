@@ -1,16 +1,18 @@
 #![allow(unused_imports)]
 
+use std::fmt::Display;
+use std::fs;
+use std::{path::Path, str::FromStr};
+use log::{debug, info, warn, error};
+
+use env_logger;
 use chumsky::prelude::*;
 use chumsky::error::Simple;
 use chumsky::text::whitespace;
 use clap::{Parser as ClapParser, ValueEnum};
 use eyre::Result;
-use std::fs;
-use std::{path::Path, str::FromStr};
-use log::{debug, info, warn, error};
-use env_logger;
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, PartialEq, ValueEnum)]
 enum Mode {
     Single,
     Double,
@@ -73,25 +75,31 @@ fn process_file(path: &Path, mode: &Mode, overwrite: bool) -> Result<()> {
     Ok(())
 }
 
-fn regular_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<char>>> {
-    let escape = just::<_, _, Simple<char>>('\\').then(any()).map(|(_, c)| c);
-    let non_quote_char_single = none_of::<_, _, Simple<char>>(vec!['\'', '\n']);
-    let non_quote_char_double = none_of::<_, _, Simple<char>>(vec!['\"', '\n']);
+fn regular_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<char>> + '_> {
+    let escape = just('\\').then(any()).map(|(escape_char, c)| format!("{}{}", escape_char, c));
+    let non_escape_char = filter(|c: &char| *c != '\\' && *c != '\"' && *c != '\'');
 
-    match mode {
-        Mode::Single => Box::new(
-            just('\"')
-                .ignore_then(escape.clone().or(non_quote_char_double).repeated().collect())
-                .then_ignore(just('\"'))
-                .map(|chars: String| format!("'{}'", chars))
-        ),
-        Mode::Double => Box::new(
-            just('\'')
-                .ignore_then(escape.clone().or(non_quote_char_single).repeated().collect())
-                .then_ignore(just('\''))
-                .map(|chars: String| format!("\"{}\"", chars))
-        ),
-    }
+    let quote_parser = match mode {
+        Mode::Single => just('\"').to('\''),
+        Mode::Double => just('\'').to('\"'),
+    };
+
+    let content_parser = escape
+        .or(non_escape_char.map(|c| c.to_string()))
+        .repeated()
+        .collect();
+
+    // Use `move` to take ownership of `mode` in the closure
+    let mode_clone = mode.clone(); // Clone `mode` since it needs to be used twice
+    Box::new(
+        quote_parser
+            .ignore_then(content_parser)
+            .then_ignore(quote_parser.clone()) // Clone `quote_parser` if necessary for reuse
+            .map(move |content: String| match mode_clone {
+                Mode::Single => format!("'{}'", content),
+                Mode::Double => format!("\"{}\"", content),
+            }),
+    )
 }
 
 fn triple_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<char>>> {

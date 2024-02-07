@@ -76,28 +76,38 @@ fn process_file(path: &Path, mode: &Mode, overwrite: bool) -> Result<()> {
 }
 
 fn regular_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<char>> + '_> {
-    let escape = just('\\').then(any()).map(|(escape_char, c)| format!("{}{}", escape_char, c));
-    let non_escape_char = filter(|c: &char| *c != '\\' && *c != '\"' && *c != '\'');
+    let escape = just('\\').then(any()).map(|(_, c)| c); // This now returns a char
+    let non_escape_char = filter(|c: &char| *c != '\\' && *c != '\"' && *c != '\'').map(|c| c.to_string());
+
+    // The goal is to create a parser that can handle both escaped characters and non-escaped characters uniformly.
+    // Since `escape` produces a char and we want a uniform output, we map both `escape` and `non_escape_char`
+    // to return String, making the types compatible for combination.
+
+    let combined_parser = non_escape_char
+        .or(escape.map(|c| c.to_string())) // Correctly map escape to return String
+        .repeated()
+        .collect();
 
     let quote_parser = match mode {
         Mode::Single => just('\"').to('\''),
         Mode::Double => just('\'').to('\"'),
     };
 
-    let content_parser = escape
-        .or(non_escape_char.map(|c| c.to_string()))
-        .repeated()
-        .collect();
-
-    // Use `move` to take ownership of `mode` in the closure
-    let mode_clone = mode.clone(); // Clone `mode` since it needs to be used twice
     Box::new(
         quote_parser
-            .ignore_then(content_parser)
-            .then_ignore(quote_parser.clone()) // Clone `quote_parser` if necessary for reuse
-            .map(move |content: String| match mode_clone {
-                Mode::Single => format!("'{}'", content),
-                Mode::Double => format!("\"{}\"", content),
+            .ignore_then(combined_parser)
+            .then_ignore(quote_parser.clone()) // Assuming cloning is necessary for syntax, but it might not be
+            .map(move |content: String| match mode {
+                Mode::Single => if content.contains('\'') {
+                                format!("\"{}\"", content) // Do not convert if internal single quotes are present
+                              } else {
+                                format!("'{}'", content)
+                              },
+                Mode::Double => if content.contains('\"') {
+                                format!("'{}'", content) // Do not convert if internal double quotes are present
+                              } else {
+                                format!("\"{}\"", content)
+                              },
             }),
     )
 }

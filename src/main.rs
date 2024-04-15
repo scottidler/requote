@@ -12,6 +12,10 @@ use chumsky::text::whitespace;
 use clap::{Parser as ClapParser, ValueEnum};
 use eyre::Result;
 
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/git_describe.rs"));
+}
+
 #[derive(Debug, Clone, PartialEq, ValueEnum)]
 enum Mode {
     Single,
@@ -19,7 +23,10 @@ enum Mode {
 }
 
 #[derive(ClapParser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[command(name = "requote", about = "tool for requoting double->single or single->double")]
+#[command(version = built_info::GIT_DESCRIBE)]
+#[command(author = "Scott A. Idler <scott.a.idler@gmail.com>")]
+#[command(arg_required_else_help = true)]
 struct Args {
     #[clap(value_parser, help = "path to file or directory")]
     path: String,

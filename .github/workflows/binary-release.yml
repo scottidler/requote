@@ -58,13 +58,13 @@ jobs:
 
       - name: Archive artifacts
         run: |
-          tar -czvf mrf-${{ github.ref_name }}-${{ matrix.suffix }}.tar.gz -C artifacts mrf
+          tar -czvf requote-${{ github.ref_name }}-${{ matrix.suffix }}.tar.gz -C artifacts requote
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mrf-${{ matrix.suffix }}
-          path: mrf-${{ github.ref_name }}-${{ matrix.suffix }}.*
+          name: requote-${{ matrix.suffix }}
+          path: requote-${{ github.ref_name }}-${{ matrix.suffix }}.*
 
   create-release:
     needs: build-and-package

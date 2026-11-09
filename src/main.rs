@@ -1,13 +1,12 @@
 #![allow(unused_imports)]
 
+use log::{debug, error, info, warn};
 use std::fmt::Display;
 use std::fs;
 use std::{path::Path, str::FromStr};
-use log::{debug, info, warn, error};
 
-use env_logger;
-use chumsky::prelude::*;
 use chumsky::error::Simple;
+use chumsky::prelude::*;
 use chumsky::text::whitespace;
 use clap::{Parser as ClapParser, ValueEnum};
 use eyre::Result;
@@ -35,7 +34,12 @@ struct Args {
     #[clap(short, long, default_value_t = Mode::Single, value_enum, help = "requote [default: double->single] OR single->double")]
     mode: Mode,
 
-    #[clap(short, long, default_value_t = false, help = "override cases where requote would normally not make the change")]
+    #[clap(
+        short,
+        long,
+        default_value_t = false,
+        help = "override cases where requote would normally not make the change"
+    )]
     overwrite: bool,
 }
 
@@ -73,7 +77,11 @@ fn process_file(path: &Path, mode: &Mode, overwrite: bool) -> Result<()> {
         debug!("Overwriting original file");
         fs::write(path, processed_content)?;
     } else {
-        let new_file_path = path.with_extension(format!("{}{}", path.extension().unwrap_or_default().to_str().unwrap_or(""), ".new"));
+        let new_file_path = path.with_extension(format!(
+            "{}{}",
+            path.extension().unwrap_or_default().to_str().unwrap_or(""),
+            ".new"
+        ));
         debug!("Writing to new file: {:?}", new_file_path);
         fs::write(&new_file_path, processed_content)?;
     }
@@ -101,36 +109,44 @@ fn regular_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<cha
     Box::new(
         quote_parser
             .ignore_then(combined_parser)
-            .then_ignore(quote_parser.clone()) // Assuming cloning is necessary for syntax, but it might not be
+            .then_ignore(quote_parser) // Assuming cloning is necessary for syntax, but it might not be
             .map(move |content: String| match mode {
-                Mode::Single => if content.contains('\'') {
-                                format!("\"{}\"", content) // Do not convert if internal single quotes are present
-                              } else {
-                                format!("'{}'", content)
-                              },
-                Mode::Double => if content.contains('\"') {
-                                format!("'{}'", content) // Do not convert if internal double quotes are present
-                              } else {
-                                format!("\"{}\"", content)
-                              },
+                Mode::Single => {
+                    if content.contains('\'') {
+                        format!("\"{}\"", content) // Do not convert if internal single quotes are present
+                    } else {
+                        format!("'{}'", content)
+                    }
+                }
+                Mode::Double => {
+                    if content.contains('\"') {
+                        format!("'{}'", content) // Do not convert if internal double quotes are present
+                    } else {
+                        format!("\"{}\"", content)
+                    }
+                }
             }),
     )
 }
 
 fn triple_quote(mode: &Mode) -> Box<dyn Parser<char, String, Error = Simple<char>>> {
-    let triple_single_content = just("'''").ignore_then(none_of('\'').repeated()).then_ignore(just("'''"));
-    let triple_double_content = just("\"\"\"").ignore_then(none_of('\"').repeated()).then_ignore(just("\"\"\""));
+    let triple_single_content = just("'''")
+        .ignore_then(none_of('\'').repeated())
+        .then_ignore(just("'''"));
+    let triple_double_content = just("\"\"\"")
+        .ignore_then(none_of('\"').repeated())
+        .then_ignore(just("\"\"\""));
 
     match mode {
         Mode::Single => Box::new(
             triple_double_content
                 .map(|chars| chars.into_iter().collect::<String>())
-                .map(|content| format!("'''{}'''", content.replace("\\\"", "\"")))
+                .map(|content| format!("'''{}'''", content.replace("\\\"", "\""))),
         ),
         Mode::Double => Box::new(
             triple_single_content
                 .map(|chars| chars.into_iter().collect::<String>())
-                .map(|content| format!("\"\"\"{}\"\"\"", content.replace("\\'", "'")))
+                .map(|content| format!("\"\"\"{}\"\"\"", content.replace("\\'", "'"))),
         ),
     }
 }
@@ -145,7 +161,5 @@ fn process_content(content: &str, mode: &Mode) -> Result<String> {
         .repeated()
         .then_ignore(end())
         .map(|parts: Vec<String>| parts.concat());
-    parser.parse(content)
-        .map_err(|e| eyre::eyre!("Parse error: {:?}", e))
+    parser.parse(content).map_err(|e| eyre::eyre!("Parse error: {:?}", e))
 }
-

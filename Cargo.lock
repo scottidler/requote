@@ -78,6 +78,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "build-version"
+version = "0.1.0"
+source = "git+https://github.com/tatari-tv/build-version-rs?tag=v0.1.0#06411938a54d50b035784b4bb6d9ffb9a187acc7"
+
+[[package]]
 name = "cc"
 version = "1.0.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -293,6 +298,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 name = "requote"
 version = "0.1.7"
 dependencies = [
+ "build-version",
  "chumsky",
  "clap",
  "env_logger",

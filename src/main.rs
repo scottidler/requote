@@ -12,7 +12,7 @@ use chumsky::text::whitespace;
 use clap::{Parser as ClapParser, ValueEnum};
 use eyre::Result;
 
-// Built-in version from build.rs via env!("GIT_DESCRIBE")
+// Built-in version from build.rs via env!("BUILD_VERSION")
 
 #[derive(Debug, Clone, PartialEq, ValueEnum)]
 enum Mode {
@@ -22,7 +22,7 @@ enum Mode {
 
 #[derive(ClapParser, Debug)]
 #[command(name = "requote", about = "tool for requoting double->single or single->double")]
-#[command(version = env!("GIT_DESCRIBE"))]
+#[command(version = env!("BUILD_VERSION"))]
 #[command(author = "Scott A. Idler <scott.a.idler@gmail.com>")]
 #[command(arg_required_else_help = true)]
 struct Args {
